@@ -94,6 +94,7 @@ install_system_dependencies() {
         git \
         wget \
         unzip \
+        nlohmann-json3-dev \
         bc \
         jq \
         screen \
@@ -142,6 +143,7 @@ download_all_scripts() {
     
     local scripts=(
         "worm_master.sh"
+        "install.sh"
         "burn_eth.sh"
         "smart_mining.sh"
         "sniper_strategy.sh"
@@ -196,6 +198,12 @@ install_worm_miner() {
     # 验证安装
     if command -v worm-miner &> /dev/null; then
         log_success "worm-miner安装成功"
+        # 创建系统级软链接，避免新会话PATH缺失
+        sudo ln -sf "$HOME/.cargo/bin/worm-miner" /usr/local/bin/worm-miner 2>/dev/null || true
+        # 将Rust环境持久化，避免重连后PATH丢失
+        if ! grep -q "source ~/.cargo/env" ~/.bashrc 2>/dev/null; then
+            echo 'source ~/.cargo/env' >> ~/.bashrc
+        fi
     else
         log_error "worm-miner安装失败"
         exit 1

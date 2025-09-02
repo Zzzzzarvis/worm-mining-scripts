@@ -63,12 +63,9 @@ check_eth_balance() {
 # 计算燃烧策略
 calculate_burn_strategy() {
     local total_amount="$1"
-    local batches=()
-    
-    log_step "计算燃烧策略..."
     
     # 使用Python进行精确计算，避免bc的兼容性问题
-    local batch_plan=$(python3 -c "
+    python3 -c "
 import math
 total = float('$total_amount')
 max_per_tx = float('$MAX_BURN_PER_TX')
@@ -84,9 +81,7 @@ while remaining > 0:
         remaining = 0
 
 print(' '.join(batches))
-")
-    
-    echo "$batch_plan"
+"
 }
 
 # 执行单次燃烧
@@ -138,7 +133,9 @@ burn_eth_batches() {
     check_eth_balance "$private_key"
     
     # 计算燃烧策略
-    local batches=($(calculate_burn_strategy "$total_amount"))
+    log_step "计算燃烧策略..."
+    local batch_plan=$(calculate_burn_strategy "$total_amount")
+    local batches=($batch_plan)
     local total_batches=${#batches[@]}
     
     log_info "燃烧计划:"

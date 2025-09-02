@@ -115,26 +115,26 @@ download_scripts() {
     log_step "下载挖矿脚本..."
     
     local scripts_dir="$WORK_DIR/scripts"
+    mkdir -p "$scripts_dir"
     
-    # 如果GitHub仓库还未创建，使用本地文件
     local script_files=(
         "install.sh"
-        "burn_eth.sh" 
+        "burn_eth.sh"
         "smart_mining.sh"
+        "sniper_strategy.sh"
+        "advanced_sniper.sh"
         "auto_claim.sh"
-        "worm_master.sh"
     )
     
-    # 这里暂时跳过下载，因为脚本还在本地
-    log_warn "注意: 脚本下载功能需要在GitHub仓库创建后启用"
-    log_info "当前使用本地脚本文件"
-    
-    # 复制本地脚本到工作目录
     for script in "${script_files[@]}"; do
-        if [ -f "/Users/z/Desktop/worm/$script" ]; then
-            cp "/Users/z/Desktop/worm/$script" "$scripts_dir/"
-            chmod +x "$scripts_dir/$script"
-            log_info "✓ 复制脚本: $script"
+        if [ ! -f "$scripts_dir/$script" ]; then
+            log_info "下载: $script"
+            if curl -fsSL "$GITHUB_REPO/$script" -o "$scripts_dir/$script"; then
+                chmod +x "$scripts_dir/$script"
+                log_info "✓ 下载完成: $script"
+            else
+                log_warn "下载失败: $script (稍后可在系统设置里重试更新脚本)"
+            fi
         fi
     done
 }
@@ -158,13 +158,19 @@ install_system() {
         fi
     fi
     
-    # 运行安装脚本
-    if [ -f "$WORK_DIR/scripts/install.sh" ]; then
-        bash "$WORK_DIR/scripts/install.sh"
-    else
-        log_error "安装脚本不存在"
-        return 1
+    # 确保安装脚本存在，不存在则从GitHub拉取
+    if [ ! -f "$WORK_DIR/scripts/install.sh" ]; then
+        log_warn "安装脚本不存在，正在从GitHub下载..."
+        mkdir -p "$WORK_DIR/scripts"
+        if curl -fsSL "$GITHUB_REPO/install.sh" -o "$WORK_DIR/scripts/install.sh"; then
+            chmod +x "$WORK_DIR/scripts/install.sh"
+            log_info "✓ install.sh 下载完成"
+        else
+            log_error "下载install.sh失败，请检查网络后在系统设置中重试更新脚本"
+            return 1
+        fi
     fi
+    bash "$WORK_DIR/scripts/install.sh"
     
     log_success "系统安装完成"
 }

@@ -95,6 +95,8 @@ install_system_dependencies() {
         wget \
         unzip \
         nlohmann-json3-dev \
+        pkg-config \
+        libssl-dev \
         bc \
         jq \
         screen \
@@ -193,7 +195,13 @@ install_worm_miner() {
     
     # 编译安装
     log_info "编译安装worm-miner..."
-    cargo install --path . >/dev/null 2>&1
+    if ! cargo install --path . >/dev/null 2>&1; then
+        log_warn "第一次编译失败，尝试修复OpenSSL依赖并重试..."
+        sudo apt install -y pkg-config libssl-dev >/dev/null 2>&1 || true
+        export OPENSSL_DIR=/usr
+        export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
+        cargo install --path . >/dev/null 2>&1
+    fi
     
     # 验证安装
     if command -v worm-miner &> /dev/null; then

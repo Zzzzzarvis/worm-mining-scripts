@@ -64,21 +64,29 @@ check_eth_balance() {
 calculate_burn_strategy() {
     local total_amount="$1"
     local batches=()
-    local remaining=$total_amount
     
     log_step "计算燃烧策略..."
     
-    while (( $(echo "$remaining > 0" | bc -l) )); do
-        if (( $(echo "$remaining >= $MAX_BURN_PER_TX" | bc -l) )); then
-            batches+=($MAX_BURN_PER_TX)
-            remaining=$(echo "$remaining - $MAX_BURN_PER_TX" | bc -l)
-        else
-            batches+=($remaining)
-            remaining=0
-        fi
-    done
+    # 使用Python进行精确计算，避免bc的兼容性问题
+    local batch_plan=$(python3 -c "
+import math
+total = float('$total_amount')
+max_per_tx = float('$MAX_BURN_PER_TX')
+batches = []
+remaining = total
+
+while remaining > 0:
+    if remaining >= max_per_tx:
+        batches.append(str(max_per_tx))
+        remaining -= max_per_tx
+    else:
+        batches.append(str(remaining))
+        remaining = 0
+
+print(' '.join(batches))
+")
     
-    echo "${batches[@]}"
+    echo "$batch_plan"
 }
 
 # 执行单次燃烧
@@ -121,7 +129,7 @@ burn_eth_batches() {
         exit 1
     fi
     
-    if (( $(echo "$total_amount <= 0" | bc -l) )); then
+    if ! python3 -c "exit(0 if float('$total_amount') > 0 else 1)" 2>/dev/null; then
         log_error "燃烧数量必须大于0"
         exit 1
     fi
@@ -152,13 +160,8 @@ burn_eth_batches() {
     
     for i in "${!batches[@]}"; do
         local batch_amount="${batches[$i]}"
-        local spend_amount=$(echo "$batch_amount - $FEE_AMOUNT" | bc -l)
+        local spend_amount=$(python3 -c "print(max(0.001, float('$batch_amount') - float('$FEE_AMOUNT')))")
         local batch_num=$((i + 1))
-        
-        # 确保spend_amount不为负数
-        if (( $(echo "$spend_amount <= 0" | bc -l) )); then
-            spend_amount="0.001"  # 最小使用量
-        fi
         
         # 执行燃烧
         if execute_burn "$private_key" "$batch_amount" "$spend_amount" "$batch_num" "$total_batches"; then
@@ -221,7 +224,7 @@ interactive_burn() {
         exit 1
     fi
     
-    if (( $(echo "$total_amount <= 0" | bc -l) )); then
+    if ! python3 -c "exit(0 if float('$total_amount') > 0 else 1)" 2>/dev/null; then
         log_error "燃烧数量必须大于0！"
         exit 1
     fi
@@ -245,8 +248,8 @@ check_dependencies() {
         exit 1
     fi
     
-    if ! command -v bc &> /dev/null; then
-        log_error "bc计算器未安装，请运行: sudo apt install bc"
+    if ! command -v python3 &> /dev/null; then
+        log_error "python3未安装，请运行: sudo apt install python3"
         exit 1
     fi
 }

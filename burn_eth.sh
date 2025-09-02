@@ -3,10 +3,10 @@
 # WORM挖矿系统 - 分批燃烧ETH脚本
 # 自动将ETH分批燃烧为BETH，每次最多1ETH以避免bug
 
-set -e
+# 注意: 不使用 set -e，因为worm-miner可能返回非零退出码但仍部分成功
 
 # 信号处理
-trap 'log_error "脚本被中断"; exit 1' INT TERM
+trap 'echo "[ERROR] 脚本被中断"; exit 1' INT TERM
 
 # 颜色定义
 RED='\033[0;31m'
@@ -102,15 +102,24 @@ execute_burn() {
     
     # 执行燃烧命令
     local burn_result=0
-    worm-miner burn \
+    local burn_output=""
+    
+    # 捕获输出和退出码
+    burn_output=$(worm-miner burn \
         --network "$NETWORK" \
         --private-key "$private_key" \
         --amount "$amount" \
         --spend "$spend_amount" \
-        --fee "$FEE_AMOUNT" || burn_result=$?
-        
-    if [ $burn_result -eq 0 ]; then
+        --fee "$FEE_AMOUNT" 2>&1) || burn_result=$?
+    
+    echo "$burn_output"
+    
+    # 检查是否至少燃烧成功（即使广播失败）
+    if echo "$burn_output" | grep -q "Successfully burnt"; then
         log_info "✓ 第 $batch_num 次燃烧成功"
+        if echo "$burn_output" | grep -q "broadcast_mint failed"; then
+            log_warn "注意: 广播交易失败，但ETH已成功燃烧"
+        fi
         return 0
     else
         log_error "✗ 第 $batch_num 次燃烧失败 (退出码: $burn_result)"
@@ -164,8 +173,11 @@ burn_eth_batches() {
     
     for i in "${!batches[@]}"; do
         local batch_amount="${batches[$i]}"
-        local spend_amount=$(python3 -c "print(max(0.001, float('$batch_amount') - float('$FEE_AMOUNT')))")
+        local spend_amount=$(python3 -c "print(max(0.001, float('$batch_amount') - float('$FEE_AMOUNT')))" 2>/dev/null || echo "0.999")
         local batch_num=$((i + 1))
+        
+        echo ""
+        echo "=== 第 $batch_num/$total_batches 次燃烧 ==="
         
         # 执行燃烧
         if execute_burn "$private_key" "$batch_amount" "$spend_amount" "$batch_num" "$total_batches"; then
@@ -184,6 +196,9 @@ burn_eth_batches() {
         else
             log_info "所有燃烧操作已完成！"
         fi
+        
+        # 强制确保循环继续
+        echo "循环状态: 已完成 $batch_num/$total_batches"
     done
     
     # 燃烧总结

@@ -5,6 +5,9 @@
 
 set -e
 
+# 信号处理
+trap 'log_error "脚本被中断"; exit 1' INT TERM
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -98,17 +101,19 @@ execute_burn() {
     log_info "手续费: $FEE_AMOUNT ETH"
     
     # 执行燃烧命令
-    if worm-miner burn \
+    local burn_result=0
+    worm-miner burn \
         --network "$NETWORK" \
         --private-key "$private_key" \
         --amount "$amount" \
         --spend "$spend_amount" \
-        --fee "$FEE_AMOUNT"; then
+        --fee "$FEE_AMOUNT" || burn_result=$?
         
+    if [ $burn_result -eq 0 ]; then
         log_info "✓ 第 $batch_num 次燃烧成功"
         return 0
     else
-        log_error "✗ 第 $batch_num 次燃烧失败"
+        log_error "✗ 第 $batch_num 次燃烧失败 (退出码: $burn_result)"
         return 1
     fi
 }
@@ -155,6 +160,8 @@ burn_eth_batches() {
     local success_count=0
     local failed_count=0
     
+    log_info "开始执行 $total_batches 次燃烧操作..."
+    
     for i in "${!batches[@]}"; do
         local batch_amount="${batches[$i]}"
         local spend_amount=$(python3 -c "print(max(0.001, float('$batch_amount') - float('$FEE_AMOUNT')))")
@@ -163,15 +170,19 @@ burn_eth_batches() {
         # 执行燃烧
         if execute_burn "$private_key" "$batch_amount" "$spend_amount" "$batch_num" "$total_batches"; then
             ((success_count++))
+            log_info "第 $batch_num 次燃烧完成，继续下一次..."
         else
             ((failed_count++))
-            log_warn "等待30秒后继续..."
+            log_warn "第 $batch_num 次燃烧失败，等待30秒后继续..."
+            sleep 30
         fi
         
         # 等待间隔（除了最后一次）
         if [ $batch_num -lt $total_batches ]; then
-            log_info "等待 $WAIT_TIME 秒后执行下一次燃烧..."
+            log_info "等待 $WAIT_TIME 秒后执行第 $((batch_num + 1)) 次燃烧..."
             sleep "$WAIT_TIME"
+        else
+            log_info "所有燃烧操作已完成！"
         fi
     done
     

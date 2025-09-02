@@ -97,6 +97,9 @@ install_system_dependencies() {
         nlohmann-json3-dev \
         pkg-config \
         libssl-dev \
+        clang \
+        llvm-dev \
+        libclang-dev \
         bc \
         jq \
         screen \
@@ -195,11 +198,33 @@ install_worm_miner() {
     
     # 编译安装
     log_info "编译安装worm-miner..."
+    # 优先为 bindgen 配置 LIBCLANG_PATH（若可探测）
+    if command -v llvm-config >/dev/null 2>&1; then
+        export LIBCLANG_PATH="$(llvm-config --libdir)"
+    else
+        for v in 18 17 16 15 14 13; do
+            if command -v llvm-config-$v >/dev/null 2>&1; then
+                export LIBCLANG_PATH="$(llvm-config-$v --libdir)"; break
+            fi
+        done
+    fi
     if ! cargo install --path . >/dev/null 2>&1; then
         log_warn "第一次编译失败，尝试修复OpenSSL依赖并重试..."
         sudo apt install -y pkg-config libssl-dev >/dev/null 2>&1 || true
         export OPENSSL_DIR=/usr
         export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
+        # 确保 clang/libclang 存在
+        sudo apt install -y clang llvm-dev libclang-dev >/dev/null 2>&1 || true
+        # 再次探测 LIBCLANG_PATH
+        if command -v llvm-config >/dev/null 2>&1; then
+            export LIBCLANG_PATH="$(llvm-config --libdir)"
+        else
+            for v in 18 17 16 15 14 13; do
+                if command -v llvm-config-$v >/dev/null 2>&1; then
+                    export LIBCLANG_PATH="$(llvm-config-$v --libdir)"; break
+                fi
+            done
+        fi
         cargo install --path . >/dev/null 2>&1
     fi
     
